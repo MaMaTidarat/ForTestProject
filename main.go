@@ -14,105 +14,61 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// MongoDB client
-var client *mongo.Client
-
 func main() {
-	// Connect to MongoDB
-
-	mongoURI := "mongodb+srv://MaMa:AbpwIdEbqNsDcuks@cluster0.oakoge4.mongodb.net/"
-	clientOptions := options.Client().ApplyURI(mongoURI)
-
-	// Connect to MongoDB
-	client, err := mongo.Connect(context.TODO(), clientOptions)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Check the connection
-	err = client.Ping(context.TODO(), nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("Connected to MongoDB!")
-
-	// Disconnect from MongoDB
-	err = client.Disconnect(context.TODO())
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Connection closed.")
-
-	// Create a new Fiber app
 	app := fiber.New()
 
-	// Route to upload Excel file
 	app.Post("/import-file", importFileHandler)
 
-	// Start the server
+	fmt.Println("Server started at :3000")
 	log.Fatal(app.Listen(":3000"))
 }
 
 func importFileHandler(c *fiber.Ctx) error {
-	// Parse the multipart form
-	form, err := c.MultipartForm()
+	file, err := c.FormFile("file")
 	if err != nil {
-		return err
+		return c.Status(fiber.StatusBadRequest).SendString(err.Error())
 	}
 
-	// Get the file from the form
-	files := form.File["file"]
-	if len(files) == 0 {
-		return fiber.NewError(fiber.StatusBadRequest, "No file uploaded")
-	}
-	file := files[0]
-
-	// Open the uploaded file
 	f, err := file.Open()
 	if err != nil {
-		return err
+		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
 	defer f.Close()
 
-	// Read the Excel file
 	excelFile, err := excelize.OpenReader(f)
 	if err != nil {
-		return err
+		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
+	defer excelFile.Close()
 
-	// Get rows from the specified sheet
-	rows, err := excelFile.GetRows("Sheet1") // replace with your sheet name
+	rows, err := excelFile.GetRows("Sheet1")
 	if err != nil {
-		return err
+		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
 
-	var documents []map[string]interface{}
+	finalResult := make(map[string][]map[string]int)
 
-	// Parse the data from the columns
-	for _, row := range rows {
+	for _, row := range rows[1:] { // Skipping header row
+		dataCell := row[0]
+		factorCell := row[1]
 
-		for _, cell := range row {
-			log.Println("===>", string(cell))
+		if strings.Contains(dataCell, "-") {
+			parts := strings.Split(dataCell, "-")
+			from, _ := strconv.Atoi(parts[0])
+			to, _ := strconv.Atoi(parts[1])
 
-			if strings.Contains(cell, "-") {
-				parts := strings.Split(cell, "-")
-				form, _ := strconv.Atoi(parts[0])
-				to, _ := strconv.Atoi(parts[1])
-				fieldName := "data" // replace this with the dynamic field name from your Excel column, e.g., "CC"
-				doc := map[string]interface{}{
-					fieldName: map[string]interface{}{
-						"form": form,
-						"to":   to,
-					},
-				}
-				documents = append(documents, doc)
+			fieldName := strings.ToLower(factorCell) // Convert Factor to lowercase (e.g., "CC" to "cc" and "AGE" to "age")
+			entry := map[string]int{
+				"from": from,
+				"to":   to,
 			}
+
+			finalResult[fieldName] = append(finalResult[fieldName], entry)
 		}
 	}
 
 	// Print the JSON data before saving
-	for _, document := range documents {
+	for _, document := range finalResult {
 		jsonData, err := json.MarshalIndent(document, "", "  ")
 		if err != nil {
 			return err
@@ -120,25 +76,29 @@ func importFileHandler(c *fiber.Ctx) error {
 		log.Println(string(jsonData))
 	}
 
-	// Insert the parsed data into MongoDB
-	err = insertIntoMongoDB(documents)
+	// MongoDB connection
+	mongoURI := "mongodb+srv://MaMa:AbpwIdEbqNsDcuks@cluster0.oakoge4.mongodb.net/"
+
+	clientOptions := options.Client().ApplyURI(mongoURI)
+	client, err := mongo.Connect(context.TODO(), clientOptions)
 	if err != nil {
-		return err
+		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
+	defer func() {
+		if err := client.Disconnect(context.TODO()); err != nil {
+			log.Println("Error disconnecting from MongoDB:", err)
+		}
+	}()
 
-	return c.SendString("Data inserted successfully!")
-}
-
-func insertIntoMongoDB(documents []map[string]interface{}) error {
 	collection := client.Database("GI").Collection("product3")
 
-	for _, document := range documents {
-		_, err := collection.InsertOne(context.Background(), document)
-		if err != nil {
-			return err
-		}
+	// Insert the final result into MongoDB
+	_, err = collection.InsertOne(context.TODO(), finalResult)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
 
-	fmt.Println("Data inserted successfully!")
-	return nil
+	return c.SendString("Data inserted successfully")
 }
+
+
