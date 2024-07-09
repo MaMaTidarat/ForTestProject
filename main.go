@@ -100,5 +100,3 @@ func importFileHandler(c *fiber.Ctx) error {
 
 	return c.SendString("Data inserted successfully")
 }
-
-
