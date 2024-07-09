@@ -46,24 +46,32 @@ func importFileHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 	}
 
-	finalResult := make(map[string][]map[string]int)
+	finalResult := make(map[string]interface{})
 
 	for _, row := range rows[1:] { // Skipping header row
 		dataCell := row[0]
-		factorCell := row[1]
+		if len(row) > 1 {
+			factorCell := row[1]
 
-		if strings.Contains(dataCell, "-") {
-			parts := strings.Split(dataCell, "-")
-			from, _ := strconv.Atoi(parts[0])
-			to, _ := strconv.Atoi(parts[1])
+			if strings.Contains(dataCell, "-") {
+				parts := strings.Split(dataCell, "-")
+				from, _ := strconv.Atoi(parts[0])
+				to, _ := strconv.Atoi(parts[1])
 
-			fieldName := strings.ToLower(factorCell) // Convert Factor to lowercase (e.g., "CC" to "cc" and "AGE" to "age")
-			entry := map[string]int{
-				"from": from,
-				"to":   to,
+				fieldName := strings.ToLower(factorCell) // Convert Factor to lowercase (e.g., "CC" to "cc" and "AGE" to "age")
+				entry := map[string]int{
+					"from": from,
+					"to":   to,
+				}
+
+				if _, exists := finalResult[fieldName]; !exists {
+					finalResult[fieldName] = []map[string]int{}
+				}
+				finalResult[fieldName] = append(finalResult[fieldName].([]map[string]int), entry)
+			} else if factorCell == "Plan" {
+				plan, _ := strconv.Atoi(dataCell)
+				finalResult["plan"] = plan
 			}
-
-			finalResult[fieldName] = append(finalResult[fieldName], entry)
 		}
 	}
 
@@ -100,3 +108,4 @@ func importFileHandler(c *fiber.Ctx) error {
 
 	return c.SendString("Data inserted successfully")
 }
+
