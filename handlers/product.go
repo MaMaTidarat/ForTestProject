@@ -1,7 +1,7 @@
-package handlers
+package main
 
 import (
-	"github.com/MaMaTidarat/ForTestProject/database"
+	"database"
 
 	"context"
 	"time"

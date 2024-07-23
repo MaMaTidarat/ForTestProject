@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"github.com/MaMaTidarat/ForTestProject/handlers"
+	"poc-app/handlers"
 
 	"github.com/gofiber/fiber/v2"
 )

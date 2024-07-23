@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/MaMaTidarat/ForTestProject/database"
-	"github.com/MaMaTidarat/ForTestProject/routes"
+	"poc-app/database"
+	"poc-app/routes"
 
 	"github.com/gofiber/fiber/v2"
 )
