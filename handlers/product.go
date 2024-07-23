@@ -4,12 +4,14 @@ import (
 	"context"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/MaMaTidarat/poc-app/database"
 	"github.com/gofiber/fiber/v2"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Product struct {
@@ -51,9 +53,21 @@ func SanitizeString(input string) string {
 func GetProducts(c *fiber.Ctx) error {
 	param := c.Query("param")
 	status := c.Query("status")
+	pageStr := c.Query("page", "1")
+	limitStr := c.Query("limit", "10")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		limit = 10
+	}
 
 	log.Printf("Received param: %s", param)
 	log.Printf("Received status: %s", status)
+	log.Printf("Page: %d, Limit: %d", page, limit)
 
 	filter := bson.M{}
 	if param != "" {
@@ -69,10 +83,29 @@ func GetProducts(c *fiber.Ctx) error {
 		log.Printf("Filter created: %+v", filter)
 	}
 
+	if status != "" {
+		sanitizedStatus := SanitizeString(strings.ToUpper(status))
+		log.Printf("Sanitized status: %s", sanitizedStatus)
+		filter["productList.productStatus"] = bson.M{"$regex": sanitizedStatus, "$options": "i"}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cursor, err := database.ProductCollection.Find(ctx, filter)
+	// Count total number of products with the specific filter
+	// count, err := database.ProductCollection.CountDocuments(ctx, filter)
+	// if err != nil {
+	// 	log.Printf("Error counting products: %v", err)
+	// 	return c.Status(500).SendString(err.Error())
+	// }
+
+	// Fetch paginated and sorted results
+	opts := options.Find().
+		SetSort(bson.D{{"productList.productName", 1}}).
+		SetSkip(int64((page - 1) * limit)).
+		SetLimit(int64(limit))
+
+	cursor, err := database.ProductCollection.Find(ctx, filter, opts)
 	if err != nil {
 		log.Printf("Error finding products: %v", err)
 		return c.Status(500).SendString(err.Error())
@@ -137,20 +170,16 @@ func GetProducts(c *fiber.Ctx) error {
 		}
 	}
 
-	// If status parameter is provided, filter products by status
-	if status != "" {
-		sanitizedStatus := SanitizeString(strings.ToUpper(status))
-		log.Printf("Sanitized status: %s", sanitizedStatus)
-		var filteredProducts []Product
-		for _, product := range products {
-			if strings.EqualFold(product.Status, sanitizedStatus) {
-				filteredProducts = append(filteredProducts, product)
-			}
-		}
-		products = filteredProducts
+	// Respond with paginated results and total count
+	response := struct {
+		// TotalCount int       `json:"totalCount"`
+		Data []Product `json:"data"`
+	}{
+		// TotalCount: int(count),
+		Data: products,
 	}
 
-	return c.JSON(products)
+	return c.JSON(response)
 }
 
 // Helper function to safely get string field from a map
