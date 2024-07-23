@@ -1,8 +1,10 @@
 package main
 
 import (
-	"fmt"
 	"log"
+
+	"github.com/MaMaTidarat/ForTestProject/database"
+	"github.com/MaMaTidarat/ForTestProject/routes"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -10,10 +12,11 @@ import (
 func main() {
 	app := fiber.New()
 
-	app.Post("/import-file", importFileHandler)
+	// Initialize MongoDB
+	database.ConnectDB()
 
-	fmt.Println("Server started at :3000")
+	// Setup routes
+	routes.SetupRoutes(app)
+
 	log.Fatal(app.Listen(":3000"))
 }
-
-
